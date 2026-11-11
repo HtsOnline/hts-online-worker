@@ -45,7 +45,7 @@ Depois, publique `online-bridge/worker.js` se a sala usar Cloudflare ou envie ta
 
 ## Etapa Android que ainda exige empacotamento
 
-O arquivo Java é código-fonte, não uma classe já compilada. O manifesto principal continua iniciando `com.unity3d.player.UnityPlayerActivity` para o APK não quebrar enquanto o plugin não estiver empacotado. Para ativar o seletor novo, compile `HtsSkinUnityActivity.java` contra as classes Unity do jogo, inclua a classe no APK como DEX e então troque o `android:name` da Activity inicial para `com.hts.skin.HtsSkinUnityActivity`. Editar/compilar `Assembly-CSharp.dll` no dnSpy não inclui Java no APK. Sem esse passo, o jogo abre normalmente e a janela antiga OxOD é usada quando disponível. Com o plugin no APK, o Android pode oferecer Galeria, Google Fotos ou um gerenciador de arquivos.
+O arquivo Java é código-fonte, não uma classe já compilada. O manifesto principal continua iniciando `com.unity3d.player.UnityPlayerActivity` para o APK não quebrar enquanto o plugin não estiver empacotado. Para ativar o seletor novo, compile `HtsSkinUnityActivity.java` contra as classes Unity do jogo, inclua a classe no APK como DEX e então troque o `android:name` da Activity inicial para `com.hts.skin.HtsSkinUnityActivity`. Editar/compilar `Assembly-CSharp.dll` no dnSpy não inclui Java no APK. Sem esse passo, o jogo não abre um seletor externo; a chamada registra o aviso de Activity ausente. Com o plugin no APK, tocar numa categoria chama o seletor Android, que pode oferecer Galeria, Google Fotos ou um gerenciador de arquivos sem abrir a tela de preview dentro do jogo.
 
 ## Referências de limites da Cloudflare
 
