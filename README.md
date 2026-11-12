@@ -1,53 +1,23 @@
-# Sincronização de skins do HTS
+# HTS online relay
 
-Esta pasta guarda as versões de trabalho dos scripts de skin que vieram da pasta extraída. Os originais externos não foram alterados.
+This folder contains the hybrid matchmaker and fallback relay for the Unity 5 mod. It uses one Cloudflare Durable Object per room and a small directory object for public rooms. The first player to create a room is its logical owner. If that player disconnects while others remain, the relay randomly selects a connected player as the new owner and keeps the room open.
 
-## O que foi preparado
+The client discovers its UDP mapping with STUN, exchanges candidates through the room WebSocket, and tries direct UDP with the logical owner, who forwards game data to the other players. Once every player confirms the path, the Worker stops forwarding movement, chat, and voice. If a player cannot establish the direct path or packets stop arriving, the room stays on the WebSocket relay until the room membership changes. The WebSocket remains connected for room membership, signaling, moderation, migration, and fallback. The matching client and online room UI are in the root `MainMenu.cs` source; movement updates are sent at 10 Hz.
 
-- Materiais locais e materiais dos caminhões remotos são instâncias separadas, para uma textura não mudar outro caminhão que usa o mesmo prefab.
-- Cada imagem é identificada pela categoria da peça e pelo `idTruck` do script: cabine, carroceria, detalhes, roda dianteira, roda traseira ou vidros.
-- Na sala online, o jogo envia a imagem uma vez por versão. A sala anuncia o hash; cada cliente baixa a imagem uma vez e usa um cache temporário por sala e jogador. As imagens recebidas são validadas pelo SHA-256 antes de serem usadas.
-- O Worker apaga as imagens do jogador quando a conexão dele termina. O cliente também apaga o cache temporário quando recebe a saída do jogador ou desconecta.
-- A tela de seleção abre o seletor moderno do Android (`ACTION_GET_CONTENT`) e copia o resultado para o armazenamento privado do jogo. O Android pode oferecer Google Fotos, Galeria ou um gerenciador de arquivos; são aceitos PNG e JPEG.
+## Deploy
 
-O envio das imagens usa o HTTPS do Worker; o movimento e as rodas continuam no fluxo P2P/relay existente. Portanto, a imagem não entra nos pacotes de movimento, mas o upload e cada download contam como tráfego/requisições do Worker.
+1. Install Node.js on a computer and sign in to a Cloudflare account.
+2. Open this folder in a terminal and run `npx wrangler login`.
+3. Run `npx wrangler deploy`.
+4. Copy the resulting `https://<worker-name>.<account-subdomain>.workers.dev` URL into the game's **Relay online** field.
+5. Keep the worker URL when sharing invites. The invite page at `/join/<room-code>` displays the code; paste either that URL or the code into the game.
 
-## Limites para evitar encher o armazenamento
+No `.gitignore` is required for this source. Do not put Cloudflare API tokens in this folder or commit them.
 
-- Até 7 MiB por imagem.
-- Até 12 MiB de skins por jogador ativo.
-- Até 768 MiB de skins por sala.
-- As imagens do servidor duram enquanto o jogador permanece conectado. O cache do outro aparelho fica em `Application.temporaryCachePath/HTSOnlineSkins` e é apagado ao sair/desconectar.
+## Privacy and cost
 
-Os limites são deliberados: Durable Objects SQLite limitam cada chave/valor a 8 MB e o plano gratuito tem limite total de armazenamento. O uso gratuito não é ilimitado; cotas da Cloudflare podem fazer um upload falhar se forem atingidas.
+Private rooms are omitted from `/api/rooms`, but private online rooms still use the Worker for signaling and fallback. In direct mode, room members learn each other's public UDP candidates and can see the public IP address used for the P2P connection. Direct UDP payloads are not encrypted by this mod; the room token is a packet tag, not encryption. The WebSocket provider can see connection metadata. In fallback mode, game packets pass through the Worker over the WebSocket connection and do not expose peer-to-peer addresses to other players.
 
-## Arquivos que precisam entrar na próxima versão
+The free tier is for initial trials, not an unlimited game service. Direct mode reduces Cloudflare game traffic substantially; rooms that use fallback still send movement and voice over the relay and can exceed free daily limits. Cloudflare documents current limits and billing at https://developers.cloudflare.com/durable-objects/platform/pricing/ and https://developers.cloudflare.com/workers/platform/pricing/.
 
-- `../MainMenu.cs` e `../CarController.cs` — classes de rede e aplicação da textura remota.
-- Os seis scripts `SendMaterial*.cs`, além de `ImageLoader.cs` e `FileSelector.cs` nesta pasta — isolamento de material, seleção, cache local e identificação das categorias.
-- `../online-bridge/worker.js` — endpoint HTTPS de upload/download, anúncio das skins e remoção ao sair.
-- `../AndroidManifest.xml` e `android-plugin/src/main/java/com/hts/skin/HtsSkinUnityActivity.java` — seletor SAF.
-
-O Worker atualizado precisa ser publicado em cada URL de ponte online que os jogadores possam usar. Se uma ponte ainda estiver com a versão antiga, a sala pode conectar, mas a sincronização das skins por ela não vai funcionar.
-
-## Ordem para substituir as classes no dnSpy
-
-Compile/substitua as classes nesta ordem para que cada classe veja os novos métodos das anteriores:
-
-1. `SendMaterial.cs`.
-2. `SendMaterialCarroceria.cs`, `SendMaterialDetails.cs`, `SendMaterialRodaFrente.cs`, `SendMaterialRodaTras.cs` e `SendMaterialVidros.cs`.
-3. `ControlaGaragem.cs`.
-4. `ImageLoader.cs` e `FileSelector.cs`.
-5. `MainMenu.cs`.
-6. `CarController.cs`.
-
-Depois, publique `online-bridge/worker.js` se a sala usar Cloudflare ou envie também `render-server.js` ao Render. O Render mantém as skins somente na memória e tem limite menor por sala; reinício do serviço apaga salas e imagens.
-
-## Etapa Android que ainda exige empacotamento
-
-O arquivo Java é código-fonte, não uma classe já compilada. O manifesto principal continua iniciando `com.unity3d.player.UnityPlayerActivity` para o APK não quebrar enquanto o plugin não estiver empacotado. Para ativar o seletor novo, compile `HtsSkinUnityActivity.java` contra as classes Unity do jogo, inclua a classe no APK como DEX e então troque o `android:name` da Activity inicial para `com.hts.skin.HtsSkinUnityActivity`. Editar/compilar `Assembly-CSharp.dll` no dnSpy não inclui Java no APK. Sem esse passo, o jogo não abre um seletor externo; a chamada registra o aviso de Activity ausente. Com o plugin no APK, tocar numa categoria chama o seletor Android, que pode oferecer Galeria, Google Fotos ou um gerenciador de arquivos sem abrir a tela de preview dentro do jogo.
-
-## Referências de limites da Cloudflare
-
-- [Durable Objects: limites de armazenamento e tamanho por valor](https://developers.cloudflare.com/durable-objects/platform/limits/)
-- [Durable Objects: preços e cotas](https://developers.cloudflare.com/durable-objects/platform/pricing/)
+The relay requires `wss://` for game connections. The game also keeps its separate LAN mode. The edited `MainMenu.cs` still needs to be pasted into dnSpy and compiled against the game's Unity 5 assemblies; Unity 5's Android TLS support should be confirmed on the target build before sharing it widely.
